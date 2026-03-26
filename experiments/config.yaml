@@ -1,0 +1,25 @@
+seed: 42
+dataset_split: train
+# 先用小规模试 OpenAI，避免一次性跑太多题计费
+max_documents: 1
+max_questions_per_doc: 3
+
+# openai | mock
+llm_backend: openai
+llm_model: gpt-4o-mini
+# 不要在 yaml 里写密钥。在终端执行: export OPENAI_API_KEY="sk-..."
+# 可选: export OPENAI_BASE_URL="https://api.openai.com/v1"  （兼容接口可改）
+openai_base_url: null
+openai_api_key: null
+
+vector_top_k: 5
+chunk_max_words: 400
+chunk_overlap_words: 50
+embedding_model: null
+
+toc_max_depth: 5
+toc_stop_score: null
+toc_selection: bm25
+
+output_dir: outputs/predictions
+log_dir: outputs/logs

@@ -1,0 +1,8 @@
+datasets>=2.14.0,<3.0.0
+numpy>=1.24.0
+faiss-cpu>=1.7.4
+PyYAML>=6.0
+requests>=2.28.0
+sentence-transformers>=2.2.0
+rank-bm25>=0.2.2
+matplotlib>=3.7.0

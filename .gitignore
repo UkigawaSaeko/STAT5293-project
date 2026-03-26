@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+outputs/predictions/*.csv
+outputs/predictions/*.json
+outputs/logs/*.log
+.cache/
+experiments/config.local.yaml
+.env
+.env.*

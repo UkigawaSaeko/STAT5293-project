@@ -1,0 +1,17 @@
+{
+  "method": "toc_rag",
+  "tag": "d3_hash_embed",
+  "config": {
+    "vector_top_k": 5,
+    "chunk_max_words": 400,
+    "toc_max_depth": 3,
+    "toc_selection": "hash_embed"
+  },
+  "n": 5,
+  "mean_em": 0.0,
+  "mean_f1": 0.09764219162842441,
+  "mean_evidence_hit": 0.25,
+  "avg_latency": 0.0005110668018460274,
+  "total_api_calls": 5.0,
+  "avg_total_tokens": 728.4
+}
