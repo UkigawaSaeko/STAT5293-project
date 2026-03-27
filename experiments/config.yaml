@@ -1,12 +1,14 @@
 seed: 42
 dataset_split: train
 # 先用小规模试 OpenAI，避免一次性跑太多题计费
-max_documents: 1
+max_documents: 167
 max_questions_per_doc: 3
 
 # openai | mock
 llm_backend: openai
 llm_model: gpt-4o-mini
+# 是否使用额外的 LLM 调用来做“更严格”的幻觉判定（会增加 API 次数/费用）
+use_llm_hallucination_eval: false
 # 不要在 yaml 里写密钥。在终端执行: export OPENAI_API_KEY="sk-..."
 # 可选: export OPENAI_BASE_URL="https://api.openai.com/v1"  （兼容接口可改）
 openai_base_url: null

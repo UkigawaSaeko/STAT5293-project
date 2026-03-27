@@ -5,11 +5,14 @@ from pathlib import Path
 from typing import Callable
 
 import yaml
+from tqdm import tqdm
 
 from data.qasper_loader import expand_qasper_rows, load_qasper_split, make_dev_subset
 from evaluation.citation_eval import citation_hits_retrieved
+from evaluation.citation_eval import citation_precision
 from evaluation.metrics import best_answer_metrics, evidence_hit_rate
 from evaluation.hallucination_eval import heuristic_hallucination
+from evaluation.hallucination_eval import llm_hallucination_flag
 from generator.llm_client import build_llm_from_config
 from parser.doc_parser import parse_sample_document
 from retrievers.base import SystemOutput
@@ -22,20 +25,64 @@ from utils.logger import get_logger
 from utils.seed import set_seed
 
 
-def evaluate_output(output: SystemOutput, sample: dict, use_heuristic_hallucination: bool = True) -> dict:
+def evaluate_output(
+    output: SystemOutput,
+    sample: dict,
+    cfg: dict | None = None,
+    llm=None,
+    use_heuristic_hallucination: bool = True,
+) -> dict:
     gold = sample.get("answers") or []
     m = best_answer_metrics(output.answer, gold)
     ev = evidence_hit_rate(output.retrieved_contexts, sample.get("evidence") or [])
     cit = citation_hits_retrieved(output.citations, output.retrieved_ids)
+
+    # Citation metrics
+    cit_prec = citation_precision(output.citations, set(output.retrieved_ids))
+
+    # Abstain/unanswerable detection (cheap, rule-based).
+    pred_l = (output.answer or "").strip().lower()
+    abstain = 1.0 if (not pred_l or "i do not know" in pred_l or "i don't know" in pred_l or "do not know" in pred_l) else 0.0
+
+    # TOC navigation stats (only meaningful for toc_rag; others will be 0).
+    method = str(output.extra.get("method", ""))
+    toc_steps = float(len(output.navigation_path)) if method == "toc_rag" else 0.0
+    max_depth = int((cfg or {}).get("toc_max_depth", 5)) if method == "toc_rag" else 0
+    toc_early_stop = 0.0
+    if method == "toc_rag":
+        toc_early_stop = 1.0 if len(output.navigation_path) < max_depth else 0.0
+
+    # Hallucination metrics
     hall = 0.0
     if use_heuristic_hallucination:
         hall = 1.0 if heuristic_hallucination(output.answer, output.retrieved_contexts) else 0.0
+
+    # Optional: LLM-based hallucination judge (extra API calls; use via config flag).
+    llm_hallucination = -1.0
+    if cfg and bool(cfg.get("use_llm_hallucination_eval", False)) and llm is not None:
+        evidence = "\n\n".join(output.retrieved_contexts) if output.retrieved_contexts else ""
+        unsupported, _raw = llm_hallucination_flag(llm, output.answer, evidence)
+        llm_hallucination = 1.0 if unsupported else 0.0
+
     return {
+        # Answer quality
         "em": m["em"],
         "f1": m["f1"],
+        # Evidence/citation grounding
         "evidence_hit_rate": ev,
         "citation_hit_rate": cit,
+        "citation_precision": cit_prec,
+        "n_citations": float(len(output.citations)),
+        # Abstain & hallucination
+        "abstain": abstain,
         "heuristic_hallucination": hall,
+        "llm_hallucination": llm_hallucination,
+        # Efficiency/cost breakdown
+        "prompt_tokens": float(output.prompt_tokens),
+        "completion_tokens": float(output.completion_tokens),
+        # TOC structure stats
+        "toc_nav_steps": toc_steps,
+        "toc_early_stop": toc_early_stop,
     }
 
 
@@ -79,10 +126,16 @@ def build_answer_fn(method: str, llm, cfg: dict) -> Callable[[dict], SystemOutpu
     raise ValueError(f"Unknown method: {method}")
 
 
-def pipeline(sample: dict, answer_fn: Callable[[dict], SystemOutput], method: str, cfg: dict) -> tuple[SystemOutput, dict]:
+def pipeline(
+    sample: dict,
+    answer_fn: Callable[[dict], SystemOutput],
+    method: str,
+    cfg: dict,
+    llm,
+) -> tuple[SystemOutput, dict]:
     out = answer_fn(sample)
-    metrics = evaluate_output(out, sample)
     out.extra["method"] = method
+    metrics = evaluate_output(out, sample, cfg=cfg, llm=llm)
     return out, metrics
 
 
@@ -94,9 +147,16 @@ def run_experiment(
     metric_rows: list[dict] = []
     prediction_rows: list[dict] = []
     q_cap = int(cfg.get("max_questions_per_doc", 100))
+    total_questions = 0
+    for row in dataset:
+        qas = row.get("qas") if isinstance(row, dict) else None
+        questions = qas.get("question") if isinstance(qas, dict) else []
+        total_questions += min(len(questions), q_cap)
+
+    pbar = tqdm(total=total_questions, desc=f"{method_name} progress", unit="qa", dynamic_ncols=True)
     for row in dataset:
         for sample in list(expand_qasper_rows(row))[:q_cap]:
-            out, m = pipeline(sample, answer_fn, method_name, cfg)
+            out, m = pipeline(sample, answer_fn, method_name, cfg, llm)
             outputs.append(out)
             metric_rows.append({"doc_id": sample["doc_id"], "question_id": sample["question_id"], **m})
             prediction_rows.append(
@@ -110,6 +170,8 @@ def run_experiment(
                     **m,
                 }
             )
+            pbar.update(1)
+    pbar.close()
     return outputs, metric_rows, prediction_rows
 
 
@@ -151,6 +213,17 @@ def main() -> None:
             "answer_f1": sum(r["f1"] for r in pred_rows) / len(pred_rows),
             "evidence_hit_rate": sum(r["evidence_hit_rate"] for r in pred_rows) / len(pred_rows),
             "citation_hit_rate": sum(r["citation_hit_rate"] for r in pred_rows) / len(pred_rows),
+            "abstain_rate": sum(r.get("abstain", 0.0) for r in pred_rows) / len(pred_rows),
+            "citation_precision": sum(r.get("citation_precision", 0.0) for r in pred_rows) / len(pred_rows),
+            "avg_n_citations": sum(r.get("n_citations", 0.0) for r in pred_rows) / len(pred_rows),
+            "toc_avg_nav_steps": sum(r.get("toc_nav_steps", 0.0) for r in pred_rows) / len(pred_rows),
+            "toc_early_stop_rate": sum(r.get("toc_early_stop", 0.0) for r in pred_rows) / len(pred_rows),
+            "llm_hallucination_rate": (
+                -1.0
+                if sum(1 for r in pred_rows if r.get("llm_hallucination", -1.0) >= 0.0) == 0
+                else sum(r.get("llm_hallucination", -1.0) for r in pred_rows if r.get("llm_hallucination", -1.0) >= 0.0)
+                / sum(1 for r in pred_rows if r.get("llm_hallucination", -1.0) >= 0.0)
+            ),
             **aggregate_efficiency(outputs),
         }
         save_run_summary(summary, json_path)

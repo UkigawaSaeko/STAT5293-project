@@ -66,10 +66,18 @@ def evidence_hit_rate(retrieved_texts: list[str], evidence_strings: list[str]) -
 
 def aggregate_efficiency(outputs: list[SystemOutput]) -> dict[str, float]:
     if not outputs:
-        return {"avg_latency": 0.0, "total_api_calls": 0, "avg_total_tokens": 0.0}
+        return {
+            "avg_latency": 0.0,
+            "total_api_calls": 0,
+            "avg_total_tokens": 0.0,
+            "avg_prompt_tokens": 0.0,
+            "avg_completion_tokens": 0.0,
+        }
     n = len(outputs)
     return {
         "avg_latency": sum(o.latency_sec for o in outputs) / n,
         "total_api_calls": float(sum(o.api_calls for o in outputs)),
         "avg_total_tokens": sum(o.total_tokens for o in outputs) / n,
+        "avg_prompt_tokens": sum(o.prompt_tokens for o in outputs) / n,
+        "avg_completion_tokens": sum(o.completion_tokens for o in outputs) / n,
     }

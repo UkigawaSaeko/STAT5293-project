@@ -50,7 +50,7 @@ def main() -> None:
             break
         samples = list(expand_qasper_rows(row))[:q_cap]
         for sample in samples:
-            out, metrics = pipeline(sample, answer_fn, args.method, cfg)
+            out, metrics = pipeline(sample, answer_fn, args.method, cfg, llm)
             outputs.append(out)
             rows.append(
                 {
@@ -73,6 +73,15 @@ def main() -> None:
     avg_ev = sum(r.get("evidence_hit_rate", 0) for r in rows) / max(len(rows), 1)
     avg_cit = sum(r.get("citation_hit_rate", 0) for r in rows) / max(len(rows), 1)
     eff = aggregate_efficiency(outputs)
+
+    abst_vals = [r.get("abstain", 0.0) for r in rows]
+    cit_prec_vals = [r.get("citation_precision", 0.0) for r in rows]
+    n_cites_vals = [r.get("n_citations", 0.0) for r in rows]
+    toc_steps_vals = [r.get("toc_nav_steps", 0.0) for r in rows]
+    toc_early_vals = [r.get("toc_early_stop", 0.0) for r in rows]
+    llm_vals = [r.get("llm_hallucination", -1.0) for r in rows if r.get("llm_hallucination", -1.0) >= 0.0]
+    llm_rate = -1.0 if not llm_vals else sum(llm_vals) / len(llm_vals)
+
     summary = {
         "method": args.method,
         "n": len(rows),
@@ -80,6 +89,12 @@ def main() -> None:
         "answer_f1": avg_f1,
         "evidence_hit_rate": avg_ev,
         "citation_hit_rate": avg_cit,
+        "abstain_rate": sum(abst_vals) / max(len(abst_vals), 1),
+        "citation_precision": sum(cit_prec_vals) / max(len(cit_prec_vals), 1),
+        "avg_n_citations": sum(n_cites_vals) / max(len(n_cites_vals), 1),
+        "toc_avg_nav_steps": sum(toc_steps_vals) / max(len(toc_steps_vals), 1),
+        "toc_early_stop_rate": sum(toc_early_vals) / max(len(toc_early_vals), 1),
+        "llm_hallucination_rate": llm_rate,
         **eff,
     }
     save_run_summary(summary, pred_dir / f"{args.method}_summary.json")

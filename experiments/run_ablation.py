@@ -64,8 +64,12 @@ def main() -> None:
                 for sample in list(expand_qasper_rows(row))[:q_cap]:
                     out = answer_fn(sample)
                     outputs.append(out)
-                    metrics_acc.append(evaluate_output(out, sample))
+                    metrics_acc.append(evaluate_output(out, sample, cfg=cfg, llm=llm))
             n = len(metrics_acc)
+
+            llm_h_vals = [m.get("llm_hallucination", -1.0) for m in metrics_acc if m.get("llm_hallucination", -1.0) >= 0.0]
+            llm_h_rate = -1.0 if not llm_h_vals else sum(llm_h_vals) / len(llm_h_vals)
+
             summary = {
                 "method": method,
                 "tag": tag,
@@ -74,6 +78,12 @@ def main() -> None:
                 "mean_em": sum(m["em"] for m in metrics_acc) / max(n, 1),
                 "mean_f1": sum(m["f1"] for m in metrics_acc) / max(n, 1),
                 "mean_evidence_hit": sum(m["evidence_hit_rate"] for m in metrics_acc) / max(n, 1),
+                "mean_abstain": sum(m.get("abstain", 0.0) for m in metrics_acc) / max(n, 1),
+                "mean_citation_precision": sum(m.get("citation_precision", 0.0) for m in metrics_acc) / max(n, 1),
+                "avg_n_citations": sum(m.get("n_citations", 0.0) for m in metrics_acc) / max(n, 1),
+                "llm_hallucination_rate": llm_h_rate,
+                "toc_avg_nav_steps": sum(m.get("toc_nav_steps", 0.0) for m in metrics_acc) / max(n, 1),
+                "toc_early_stop_rate": sum(m.get("toc_early_stop", 0.0) for m in metrics_acc) / max(n, 1),
                 **aggregate_efficiency(outputs),
             }
             save_run_summary(summary, out_dir / f"{method}_{tag}.json")
