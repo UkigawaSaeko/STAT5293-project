@@ -29,7 +29,53 @@
 - `fig_cost_vs_quality_f1.png`
 - `fig_cost_vs_citation.png`
 
-## 3. 总体结果（Overall Metrics）
+## 3. 指标讲解（How to Read Metrics）
+
+本项目的指标可以分为四类：答案质量、证据与引用可靠性、幻觉与保守性、成本效率。
+
+- **EM（Exact Match）**  
+  预测答案与任一标准答案在归一化后完全一致记为 1，否则为 0。  
+  取值范围 `[0,1]`，越高越好。  
+  由于开放式问答存在同义改写，EM 往往偏严格，通常与 F1 结合解读。
+
+- **F1（Token-level F1）**  
+  预测答案与标准答案的 token 级重叠程度（取与多个 gold 中最优者）。  
+  取值范围 `[0,1]`，越高越好。  
+  这是当前实验里最稳健的主质量指标。
+
+- **Evidence Hit Rate**  
+  检索到的上下文中命中 gold evidence 的比例。  
+  取值范围 `[0,1]`，越高越好。  
+  反映“检索是否找到了支持答案的证据”。
+
+- **Citation Hit Rate / Citation Precision**  
+  模型给出的 citation 是否落在检索到的证据集合中。  
+  取值范围 `[0,1]`，越高越好。  
+  在本实验输出中二者数值一致，可作为“引用可信度”指标。
+
+- **Heuristic Hallucination**  
+  基于规则判断答案是否包含未被检索证据支持的内容。  
+  取值范围 `[0,1]`，越低越好。  
+  它是启发式指标，适合做相对比较，不宜单独作为最终结论。
+
+- **Abstain Rate**  
+  模型是否回答 “I do not know” 等拒答形式。  
+  取值范围 `[0,1]`，需结合任务目标解读：  
+  拒答高可能降低幻觉，但也可能牺牲回答覆盖率。
+
+- **Prompt Tokens / Completion Tokens**  
+  分别表示输入 token 成本与输出 token 成本。  
+  越低越省成本。  
+  在 RAG 场景下，Prompt Tokens 通常是主要成本来源。
+
+解读原则：
+
+- 质量优先看 `F1 + Evidence/Citation`；
+- 可靠性看 `Heuristic Hallucination`（越低越好）；
+- 经济性看 `Prompt Tokens`；
+- 最终采用“质量-可靠性-成本”三维联合判断，不单看一个指标。
+
+## 4. 总体结果（Overall Metrics）
 
 基于 `overall_metrics.csv`：
 
@@ -60,7 +106,7 @@
 - Vector-RAG 在质量指标上最好，但 token 成本最高。
 - TOC-RAG 质量介于两者之间，成本远低于 Vector-RAG，体现出明显“中间解”特征。
 
-## 4. 配对差值结果（Paired Differences）
+## 5. 配对差值结果（Paired Differences）
 
 基于 `paired_differences.csv`，重点关注 `vector_rag - toc_rag`：
 
@@ -79,7 +125,7 @@
 
 - Vector-RAG 在更多题目上取得更高引用命中与证据支持，但代价是显著更高的 token 消耗。
 
-## 5. 显著性检验（Paired Bootstrap）
+## 6. 显著性检验（Paired Bootstrap）
 
 基于 `paired_bootstrap_tests.json`（5000 bootstrap）：
 
@@ -94,7 +140,7 @@
 
 - 在当前评测集上，核心质量指标差异具有统计显著性（CI 不跨 0）。
 
-## 6. 成本-效果权衡图
+## 7. 成本-效果权衡图
 
 - 图1：`fig_cost_vs_quality_f1.png`
   - x轴：平均 Prompt Tokens
@@ -109,7 +155,7 @@
 - Vector-RAG 效果最佳但成本最高。
 - TOC-RAG 在效果与成本之间形成可解释的折中点。
 
-## 7. 对研究问题（RQ）的对应结论
+## 8. 对研究问题（RQ）的对应结论
 
 - **RQ1（结构检索是否优于相似度检索）**  
   在当前数据上，Vector-RAG 的质量指标高于 TOC-RAG；TOC-RAG 并未超过 Vector-RAG，但具备成本优势。
@@ -120,7 +166,7 @@
 - **RQ3（效果-成本权衡）**  
   TOC-RAG 是更低成本的折中方案；Vector-RAG 是更高性能但高成本方案。
 
-## 8. 可复用命令
+## 9. 可复用命令
 
 在项目根目录执行：
 
@@ -130,7 +176,7 @@ python experiments/analyze_outputs.py
 
 重新生成全部分析产物。
 
-## 9. 备注
+## 10. 备注
 
 - 当前 EM 为 0，建议以 F1、evidence、citation 为主要结论指标。
 - 本报告为自动分析结果的文字化汇总，可直接纳入最终报告的结果章节初稿。
