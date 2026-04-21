@@ -16,7 +16,7 @@
 
 1. 读取三份预测结果并按 `question_id` 对齐  
 2. 计算每种方法总体均值指标  
-3. 计算方法两两配对差值（mean/median/win-rate）  
+3. 计算方法两两配对差值（mean-diff/win-rate）  
 4. 对核心质量指标做 paired bootstrap（5000次重采样）  
 5. 绘制成本-效果散点图（F1 与 Citation Hit）  
 
