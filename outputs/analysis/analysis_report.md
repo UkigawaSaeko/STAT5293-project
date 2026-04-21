@@ -29,7 +29,35 @@
 - `fig_cost_vs_quality_f1.png`
 - `fig_cost_vs_citation.png`
 
-## 3. 指标讲解（How to Read Metrics）
+## 3. 三种方法区别（No-RAG vs Vector-RAG vs TOC-RAG）
+
+为便于理解结果，先说明三种方法在“是否检索、如何检索、成本结构”上的核心区别。
+
+- **No-RAG**
+  - 流程：不做外部检索，模型仅依赖参数记忆直接回答。
+  - 优点：实现最简单、token 成本最低、延迟通常最小。
+  - 缺点：对长文档任务几乎没有 grounding，容易答非所问或拒答。
+  - 适用：快速 baseline、无需文档证据支撑的轻量任务。
+
+- **Vector-RAG**
+  - 流程：先把文档切块并向量化，再按相似度检索 top-k 片段供模型回答。
+  - 优点：召回能力强，通常在答案质量、证据命中、引用命中上表现最好。
+  - 缺点：需要较多上下文拼接，Prompt Tokens 成本高；对文档结构显式利用较弱。
+  - 适用：以“效果优先”为目标，且可接受较高推理成本的场景。
+
+- **TOC-RAG**
+  - 流程：利用文档目录/层级结构进行逐层导航，再在选中章节内检索与回答。
+  - 优点：上下文更聚焦、token 成本显著低于大规模向量拼接，解释性较好。
+  - 缺点：若导航路径偏离关键章节，可能损失召回，导致质量低于 Vector-RAG。
+  - 适用：希望在“质量与成本”间取得折中、且文档结构较规范的场景。
+
+一句话对比：
+
+- No-RAG：**最低成本基线**
+- Vector-RAG：**最高质量方案**
+- TOC-RAG：**结构化折中方案**
+
+## 4. 指标讲解（How to Read Metrics）
 
 本项目的指标可以分为四类：答案质量、证据与引用可靠性、幻觉与保守性、成本效率。
 
@@ -75,7 +103,7 @@
 - 经济性看 `Prompt Tokens`；
 - 最终采用“质量-可靠性-成本”三维联合判断，不单看一个指标。
 
-## 4. 总体结果（Overall Metrics）
+## 5. 总体结果（Overall Metrics）
 
 基于 `overall_metrics.csv`：
 
@@ -106,7 +134,7 @@
 - Vector-RAG 在质量指标上最好，但 token 成本最高。
 - TOC-RAG 质量介于两者之间，成本远低于 Vector-RAG，体现出明显“中间解”特征。
 
-## 5. 配对差值结果（Paired Differences）
+## 6. 配对差值结果（Paired Differences）
 
 基于 `paired_differences.csv`，重点关注 `vector_rag - toc_rag`：
 
@@ -125,7 +153,7 @@
 
 - Vector-RAG 在更多题目上取得更高引用命中与证据支持，但代价是显著更高的 token 消耗。
 
-## 6. 显著性检验（Paired Bootstrap）
+## 7. 显著性检验（Paired Bootstrap）
 
 基于 `paired_bootstrap_tests.json`（5000 bootstrap）：
 
@@ -140,7 +168,7 @@
 
 - 在当前评测集上，核心质量指标差异具有统计显著性（CI 不跨 0）。
 
-## 7. 成本-效果权衡图
+## 8. 成本-效果权衡图
 
 - 图1：`fig_cost_vs_quality_f1.png`
   - x轴：平均 Prompt Tokens
@@ -155,7 +183,7 @@
 - Vector-RAG 效果最佳但成本最高。
 - TOC-RAG 在效果与成本之间形成可解释的折中点。
 
-## 8. 对研究问题（RQ）的对应结论
+## 9. 对研究问题（RQ）的对应结论
 
 - **RQ1（结构检索是否优于相似度检索）**  
   在当前数据上，Vector-RAG 的质量指标高于 TOC-RAG；TOC-RAG 并未超过 Vector-RAG，但具备成本优势。
@@ -166,7 +194,7 @@
 - **RQ3（效果-成本权衡）**  
   TOC-RAG 是更低成本的折中方案；Vector-RAG 是更高性能但高成本方案。
 
-## 9. 可复用命令
+## 10. 可复用命令
 
 在项目根目录执行：
 
@@ -176,7 +204,7 @@ python experiments/analyze_outputs.py
 
 重新生成全部分析产物。
 
-## 10. 备注
+## 11. 备注
 
 - 当前 EM 为 0，建议以 F1、evidence、citation 为主要结论指标。
 - 本报告为自动分析结果的文字化汇总，可直接纳入最终报告的结果章节初稿。
