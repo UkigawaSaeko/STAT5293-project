@@ -1,0 +1,87 @@
+{
+  "method": "paired_bootstrap",
+  "n_boot": 5000,
+  "results": [
+    {
+      "comparison": "vector_rag - toc_rag",
+      "metric": "f1",
+      "n": 398,
+      "mean_diff": 0.03226331561871561,
+      "ci95_low": 0.020106864584392897,
+      "ci95_high": 0.04523149237055222,
+      "p_two_sided": 0.0
+    },
+    {
+      "comparison": "vector_rag - toc_rag",
+      "metric": "evidence_hit_rate",
+      "n": 398,
+      "mean_diff": 0.2715676410658675,
+      "ci95_low": 0.22175913453930374,
+      "ci95_high": 0.32118278478591067,
+      "p_two_sided": 0.0
+    },
+    {
+      "comparison": "vector_rag - toc_rag",
+      "metric": "citation_hit_rate",
+      "n": 398,
+      "mean_diff": 0.5728643216080402,
+      "ci95_low": 0.5201005025125628,
+      "ci95_high": 0.6231155778894473,
+      "p_two_sided": 0.0
+    },
+    {
+      "comparison": "vector_rag - no_rag",
+      "metric": "f1",
+      "n": 398,
+      "mean_diff": 0.10584444922629707,
+      "ci95_low": 0.0914376070564512,
+      "ci95_high": 0.12035942680102024,
+      "p_two_sided": 0.0
+    },
+    {
+      "comparison": "vector_rag - no_rag",
+      "metric": "evidence_hit_rate",
+      "n": 398,
+      "mean_diff": 0.42366549558760613,
+      "ci95_low": 0.3779838722834954,
+      "ci95_high": 0.46743865657653344,
+      "p_two_sided": 0.0
+    },
+    {
+      "comparison": "vector_rag - no_rag",
+      "metric": "citation_hit_rate",
+      "n": 398,
+      "mean_diff": 0.7663316582914573,
+      "ci95_low": 0.7236180904522613,
+      "ci95_high": 0.8065326633165829,
+      "p_two_sided": 0.0
+    },
+    {
+      "comparison": "toc_rag - no_rag",
+      "metric": "f1",
+      "n": 398,
+      "mean_diff": 0.07358113360758146,
+      "ci95_low": 0.06250348764923151,
+      "ci95_high": 0.08532835954271453,
+      "p_two_sided": 0.0
+    },
+    {
+      "comparison": "toc_rag - no_rag",
+      "metric": "evidence_hit_rate",
+      "n": 398,
+      "mean_diff": 0.15209785452173866,
+      "ci95_low": 0.12005784695483188,
+      "ci95_high": 0.1864464018057352,
+      "p_two_sided": 0.0
+    },
+    {
+      "comparison": "toc_rag - no_rag",
+      "metric": "citation_hit_rate",
+      "n": 398,
+      "mean_diff": 0.1934673366834171,
+      "ci95_low": 0.15577889447236182,
+      "ci95_high": 0.23115577889447236,
+      "p_two_sided": 0.0
+    }
+  ]
+}
