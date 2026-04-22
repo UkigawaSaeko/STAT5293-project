@@ -2,7 +2,7 @@
 
 ## Abstract
 
-Long-document question answering remains challenging for LLM systems because relevant evidence is sparse, distributed across sections, and easy to miss in long contexts. This project evaluates whether structure-aware retrieval can improve grounded QA performance compared with standard similarity retrieval and no retrieval. We conduct a controlled comparison on Qasper with three paradigms: `no_rag`, `vector_rag`, and `toc_rag`. We evaluate answer quality (EM, F1), grounding reliability (evidence hit rate, citation hit rate, citation precision), hallucination-related behavior (heuristic hallucination, abstain), and efficiency (prompt/completion tokens). Using paired analysis over aligned `question_id`s and paired bootstrap confidence intervals (`n_boot=5000`), we find that both retrieval-based methods outperform no retrieval, and Vector-RAG achieves the strongest quality and grounding performance. TOC-RAG does not surpass Vector-RAG on core quality metrics in the current setup, but provides a clear cost-performance trade-off with much lower prompt-token usage. These findings suggest that explicit structure-aware retrieval is a practical middle-ground design for budget-sensitive deployments, while similarity retrieval remains preferable when quality is the primary objective.
+Long-document question answering remains challenging for LLM systems because relevant evidence is sparse, distributed across sections, and easy to miss in long contexts. This project evaluates whether structure-aware retrieval can improve grounded QA performance compared with standard similarity retrieval and no retrieval. We conduct a controlled comparison on Qasper with four paradigms: `no_rag`, `vector_rag`, `toc_rag`, and `hybrid_rag` (TOC-guided section selection followed by scoped vector retrieval). We evaluate answer quality (EM, F1), grounding reliability (evidence hit rate, citation hit rate, citation precision), hallucination-related behavior (heuristic hallucination, abstain), and efficiency (prompt/completion tokens). Using paired analysis over aligned `question_id`s and paired bootstrap confidence intervals (`n_boot=5000`), we find that all retrieval-based methods outperform no retrieval, and Vector-RAG achieves the strongest quality and grounding performance. Hybrid-RAG achieves near-TOC F1 at TOC-level cost but with substantially higher citation reliability than TOC-RAG, while still remaining below Vector-RAG. These findings suggest a three-tier trade-off frontier: Vector-RAG for maximum quality, Hybrid-RAG for stronger grounding under moderate budget, and TOC-RAG for simple low-cost structured retrieval.
 
 ## 1. Introduction
 
@@ -16,12 +16,13 @@ This project studies whether explicit document structure can improve retrieval e
 
 - **RQ1**: Can TOC-based retrieval outperform vector retrieval in answer quality and reliability?
 - **RQ2**: How do retrieval paradigms affect hallucination tendency and citation reliability?
-- **RQ3**: What are the quality-cost trade-offs among No-RAG, Vector-RAG, and TOC-RAG?
+- **RQ3**: What are the quality-cost trade-offs among No-RAG, Vector-RAG, TOC-RAG, and Hybrid-RAG?
 
 ### 1.3 Contributions
 
-- A unified experimental framework comparing `no_rag`, `vector_rag`, and `toc_rag` on the same QA set.
+- A unified experimental framework comparing `no_rag`, `vector_rag`, `toc_rag`, and `hybrid_rag` on the same QA set.
 - A structure-aware TOC navigation baseline designed as a practical middle-ground approach.
+- A hybrid two-stage retriever that combines TOC-guided narrowing with scoped vector retrieval.
 - Paired comparison and bootstrap significance testing over aligned question-level predictions.
 - A multi-dimensional view of performance that jointly analyzes quality, grounding, and cost.
 
@@ -53,6 +54,7 @@ All methods share the same generation and evaluation framework, differing only i
 - **No-RAG (`no_rag`)**: direct generation with no external retrieval.
 - **Vector-RAG (`vector_rag`)**: chunk document, build vector index, retrieve top-k similar chunks.
 - **TOC-RAG (`toc_rag`)**: navigate a table-of-contents hierarchy, then retrieve/generate from selected sections.
+- **Hybrid-RAG (`hybrid_rag`)**: first navigate with TOC, then run vector retrieval within the selected section.
 
 ### 3.4 Experimental Controls and Fairness
 
@@ -90,6 +92,7 @@ Baselines are run once per method:
 python experiments/run_baseline.py --method no_rag
 python experiments/run_baseline.py --method vector_rag
 python experiments/run_baseline.py --method toc_rag
+python experiments/run_baseline.py --method hybrid_rag
 ```
 
 Ablation grid includes:
@@ -103,25 +106,34 @@ Ablation grid includes:
 
 From `outputs/analysis/overall_metrics.csv` (n=398 per method):
 
-- **No-RAG**: F1 `0.0175`, evidence hit `0.0000`, citation hit `0.0000`, heuristic hallucination `0.4447`, avg prompt tokens `42.24`.
+- **No-RAG**: F1 `0.0181`, evidence hit `0.0000`, citation hit `0.0000`, heuristic hallucination `0.4623`, avg prompt tokens `42.24`.
 - **TOC-RAG**: F1 `0.0910`, evidence hit `0.1521`, citation hit `0.1935`, heuristic hallucination `0.2337`, avg prompt tokens `531.03`.
+- **Hybrid-RAG**: F1 `0.0913`, evidence hit `0.1422`, citation hit `0.5352`, heuristic hallucination `0.2538`, avg prompt tokens `521.44`.
 - **Vector-RAG**: F1 `0.1233`, evidence hit `0.4237`, citation hit `0.7663`, heuristic hallucination `0.0075`, avg prompt tokens `2680.34`.
 
 Interpretation:
 
-1. Both retrieval methods significantly improve over No-RAG on quality and grounding.
+1. All retrieval methods significantly improve over No-RAG on quality.
 2. Vector-RAG provides the highest quality/reliability.
-3. TOC-RAG is substantially cheaper than Vector-RAG while clearly outperforming No-RAG.
+3. Hybrid-RAG and TOC-RAG are both substantially cheaper than Vector-RAG.
+4. Hybrid-RAG improves citation reliability over TOC-RAG while keeping similar F1 and cost.
 
 ### 5.2 Paired Differences
 
-From `outputs/analysis/paired_differences.csv`, for `vector_rag - toc_rag`:
+From `outputs/analysis/paired_differences.csv`, key comparisons:
 
 - F1 mean diff: `+0.0323` (win `0.4095`, lose `0.2286`, tie `0.3618`)
 - Evidence hit diff: `+0.2716`
 - Citation hit diff: `+0.5729` (win `0.5879`, lose `0.0151`)
 - Heuristic hallucination diff: `-0.2261` (lower is better; Vector lower)
 - Prompt tokens diff: `+2149.31`
+
+For `hybrid_rag - toc_rag`:
+
+- F1 mean diff: `+0.00024` (effectively tied)
+- Evidence hit diff: `-0.00991` (hybrid slightly lower)
+- Citation hit diff: `+0.34171` (hybrid substantially higher)
+- Prompt tokens diff: `-9.59` (hybrid slightly cheaper)
 
 This indicates a strong quality/reliability advantage for Vector-RAG but with much higher input-token cost.
 
@@ -132,8 +144,10 @@ From `outputs/analysis/paired_bootstrap_tests.json`:
 - `vector_rag - toc_rag`, F1 mean diff `0.0323`, 95% CI `[0.0201, 0.0452]`
 - `vector_rag - toc_rag`, evidence hit mean diff `0.2716`, 95% CI `[0.2218, 0.3212]`
 - `vector_rag - toc_rag`, citation hit mean diff `0.5729`, 95% CI `[0.5201, 0.6231]`
+- `hybrid_rag - toc_rag`, F1 mean diff `0.00024`, 95% CI `[-0.00558, 0.00542]` (not significant; CI crosses 0)
+- `hybrid_rag - toc_rag`, citation hit mean diff `0.34171`, 95% CI `[0.29397, 0.39196]` (significant)
 
-All above CIs exclude zero. Similarly, `vector_rag - no_rag` and `toc_rag - no_rag` core-metric CIs also exclude zero, supporting statistically robust performance differences on the evaluated slice.
+For comparisons where the 95% CI does not include zero, the mean difference is statistically supported. The `hybrid_rag` vs `toc_rag` F1 gap is not significant (CI includes zero), while the citation hit gap is. Core metrics for `vector_rag` and `toc_rag` vs `no_rag` have CIs that exclude zero.
 
 ### 5.4 Cost-Quality Trade-off
 
@@ -141,9 +155,10 @@ The two analysis figures (`fig_cost_vs_quality_f1.png`, `fig_cost_vs_citation.pn
 
 - No-RAG: lowest cost, lowest quality.
 - Vector-RAG: highest quality, highest cost.
-- TOC-RAG: middle point with meaningful quality gains over No-RAG at far lower cost than Vector-RAG.
+- TOC-RAG: low-cost structured baseline with clear gains over No-RAG.
+- Hybrid-RAG: TOC-level cost with much better citation reliability, forming a stronger middle option.
 
-For budget-constrained settings, TOC-RAG is a practical compromise; for quality-critical settings, Vector-RAG is preferable.
+For budget-constrained settings, Hybrid-RAG is a practical compromise; for quality-critical settings, Vector-RAG is preferable.
 
 ## 6. Error Analysis and Case Study
 
@@ -194,14 +209,15 @@ These examples support the quantitative findings: Vector-RAG is strongest on dif
 
 ### 7.1 Answers to RQ1-RQ3
 
-- **RQ1**: In this setup, TOC-RAG does not outperform Vector-RAG on core quality/reliability metrics.
-- **RQ2**: Retrieval substantially improves grounding reliability versus No-RAG; Vector-RAG is strongest and has the lowest hallucination proxy.
-- **RQ3**: TOC-RAG offers a clear quality-cost middle ground; Vector-RAG offers best quality at significantly higher cost.
+- **RQ1**: In this setup, neither TOC-RAG nor Hybrid-RAG outperforms Vector-RAG on core quality.
+- **RQ2**: Retrieval substantially improves grounding reliability versus No-RAG; Vector-RAG is strongest, while Hybrid-RAG improves citation reliability substantially over TOC-RAG.
+- **RQ3**: Hybrid-RAG and TOC-RAG offer low-cost alternatives; Hybrid-RAG is the stronger citation-grounding trade-off, while Vector-RAG remains the high-performance option.
 
 ### 7.2 Practical Implications
 
 - Prefer **Vector-RAG** when answer fidelity and citation reliability dominate cost concerns.
-- Prefer **TOC-RAG** when token budget/latency constraints are important but No-RAG quality is insufficient.
+- Prefer **Hybrid-RAG** when token budget is constrained but citation reliability is still important.
+- Prefer **TOC-RAG** when minimal complexity and low cost are prioritized.
 - Use **No-RAG** primarily as a minimal baseline, not a deployment strategy for grounded long-document QA.
 
 ### 7.3 Limitations
@@ -218,7 +234,7 @@ These examples support the quantitative findings: Vector-RAG is strongest on dif
 
 ## 8. Conclusion
 
-This project provides a controlled comparison of three retrieval paradigms for long-document QA. Results show that retrieval is essential for grounded performance, Vector-RAG delivers the strongest quality and reliability, and TOC-RAG offers a useful lower-cost compromise. The main practical takeaway is that retrieval strategy selection should be driven by deployment objective: quality-first systems should lean toward similarity retrieval, while cost-aware systems can benefit from structure-aware retrieval as a middle-ground design.
+This project provides a controlled comparison of four retrieval paradigms for long-document QA. Results show that retrieval is essential for grounded performance, Vector-RAG delivers the strongest quality and reliability, and Hybrid-RAG offers a useful budget-aware middle-ground by substantially improving citation reliability over TOC-RAG at similar cost. The main practical takeaway is that retrieval strategy selection should be driven by deployment objective: quality-first systems should lean toward Vector-RAG, while cost-aware systems can benefit from Hybrid-RAG or TOC-RAG depending on reliability requirements.
 
 ## References
 
