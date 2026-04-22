@@ -1,0 +1,19 @@
+{
+  "method": "hybrid_rag",
+  "n": 398,
+  "answer_em": 0.0,
+  "answer_f1": 0.09128520857824482,
+  "evidence_hit_rate": 0.1421918820825117,
+  "citation_hit_rate": 0.535175879396985,
+  "abstain_rate": 0.0,
+  "citation_precision": 0.535175879396985,
+  "avg_n_citations": 0.7010050251256281,
+  "toc_avg_nav_steps": 1.1633165829145728,
+  "toc_early_stop_rate": 1.0,
+  "llm_hallucination_rate": -1.0,
+  "avg_latency": 1.348690960429762,
+  "total_api_calls": 398.0,
+  "avg_total_tokens": 566.9924623115578,
+  "avg_prompt_tokens": 521.4396984924623,
+  "avg_completion_tokens": 45.552763819095475
+}
