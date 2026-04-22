@@ -2,11 +2,12 @@
 
 Does Explicit Document Structure Beat Similarity-Based Retrieval?
 
-This project evaluates three long-document QA paradigms on Qasper:
+This project evaluates four long-document QA paradigms on Qasper:
 
 - `no_rag`: answer directly from model parametric knowledge
 - `vector_rag`: chunk-based similarity retrieval (Vector RAG)
 - `toc_rag`: structure-aware retrieval using TOC navigation
+- `hybrid_rag`: TOC-guided section selection + scoped vector retrieval
 
 The goal is to compare answer quality, grounding reliability, and inference cost under a unified pipeline.
 
@@ -17,7 +18,7 @@ The goal is to compare answer quality, grounding reliability, and inference cost
 - `experiments/run_ablation.py`: run a small hyperparameter grid for ablations
 - `experiments/analyze_outputs.py`: paired analysis, bootstrap tests, and figures
 - `experiments/config.yaml`: experiment/runtime configuration
-- `retrievers/`: implementations of No-RAG / Vector-RAG / TOC-RAG
+- `retrievers/`: implementations of No-RAG / Vector-RAG / TOC-RAG / Hybrid-RAG
 - `evaluation/`: metrics for answer quality, evidence/citation grounding, hallucination
 - `outputs/predictions/`: raw prediction outputs
 - `outputs/analysis/`: post-hoc analysis tables/figures/reports
@@ -58,6 +59,15 @@ Run each method from project root:
 python experiments/run_baseline.py --method no_rag
 python experiments/run_baseline.py --method vector_rag
 python experiments/run_baseline.py --method toc_rag
+python experiments/run_baseline.py --method hybrid_rag
+```
+
+For strict fairness, run with matched question IDs (recommended):
+
+```bash
+python experiments/run_baseline.py --method no_rag --match-question-ids-from outputs/predictions/vector_rag_predictions.csv
+python experiments/run_baseline.py --method toc_rag --match-question-ids-from outputs/predictions/vector_rag_predictions.csv
+python experiments/run_baseline.py --method hybrid_rag --match-question-ids-from outputs/predictions/vector_rag_predictions.csv
 ```
 
 Expected outputs:
@@ -65,11 +75,12 @@ Expected outputs:
 - `outputs/predictions/no_rag_predictions.csv`
 - `outputs/predictions/vector_rag_predictions.csv`
 - `outputs/predictions/toc_rag_predictions.csv`
+- `outputs/predictions/hybrid_rag_predictions.csv`
 - `outputs/predictions/*_summary.json`
 
 ## 5) Run Post-hoc Analysis
 
-After the three baseline prediction CSVs exist:
+After baseline prediction CSVs exist:
 
 ```bash
 python experiments/analyze_outputs.py
@@ -103,7 +114,8 @@ This writes one summary JSON per setting to:
 
 ## 8) Suggested Reporting Claims (Aligned with Proposal)
 
-- Both RAG variants outperform No-RAG on long-document grounding.
+- All retrieval variants outperform No-RAG on long-document grounding.
 - Vector-RAG tends to achieve the strongest quality/grounding metrics.
 - TOC-RAG provides a lower-cost trade-off point with structure-aware retrieval.
+- Hybrid-RAG keeps TOC-level cost while substantially improving citation reliability over TOC-RAG.
 - Paired bootstrap CI supports significance of key metric gaps on current test slice.
