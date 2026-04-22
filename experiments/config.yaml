@@ -23,5 +23,21 @@ toc_max_depth: 5
 toc_stop_score: null
 toc_selection: bm25
 
+# Hybrid RAG: TOC navigation + scoped vector retrieval
+hybrid_top_k: 3
+hybrid_toc_max_depth: 4
+hybrid_chunk_max_words: 220
+hybrid_chunk_overlap_words: 40
+
+# Optional for strict consistency across runs:
+# if set to an existing predictions CSV, only question_ids in that CSV are evaluated.
+# Example: outputs/predictions/vector_rag_predictions.csv
+match_question_ids_from: null
+
+# Ablation study only: caps data size so run_ablation.py does not use full max_documents.
+# Main baselines still use max_documents / max_questions_per_doc above.
+ablation_max_documents: 12
+ablation_max_questions_per_doc: 2
+
 output_dir: outputs/predictions
 log_dir: outputs/logs
