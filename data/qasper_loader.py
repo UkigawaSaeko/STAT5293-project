@@ -180,8 +180,8 @@ def expand_qasper_rows(row: dict[str, Any]) -> Iterator[dict[str, Any]]:
 
 
 def load_qasper_split(split: str = "train") -> Dataset:
-    # allenai/qasper uses a dataset script; `datasets>=3` rejects scripts — pin `<3` in requirements.
-    ds = load_dataset("allenai/qasper", split=split, trust_remote_code=True)
+    # Newer `datasets` versions removed `trust_remote_code`; call without it for compatibility.
+    ds = load_dataset("allenai/qasper", split=split)
     return ds
 
 
