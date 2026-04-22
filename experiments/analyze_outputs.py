@@ -29,6 +29,7 @@ METHOD_FILES = {
     "no_rag": PRED_DIR / "no_rag_predictions.csv",
     "vector_rag": PRED_DIR / "vector_rag_predictions.csv",
     "toc_rag": PRED_DIR / "toc_rag_predictions.csv",
+    "hybrid_rag": PRED_DIR / "hybrid_rag_predictions.csv",
 }
 
 MAIN_METRICS = [
@@ -74,10 +75,15 @@ def _load_predictions() -> dict[str, pd.DataFrame]:
 
 def build_aligned_frame(dfs: dict[str, pd.DataFrame]) -> pd.DataFrame:
     base_cols = ["question_id", "doc_id", "question"]
+    methods = list(dfs.keys())
+    if "no_rag" not in methods:
+        raise ValueError("`no_rag` predictions are required as alignment base.")
     aligned = dfs["no_rag"][base_cols + ALL_SUMMARY_METRICS].copy()
     aligned = aligned.rename(columns={c: f"{c}_no_rag" for c in ALL_SUMMARY_METRICS})
 
-    for method in ("vector_rag", "toc_rag"):
+    for method in methods:
+        if method == "no_rag":
+            continue
         sub = dfs[method][["question_id"] + ALL_SUMMARY_METRICS].copy()
         sub = sub.rename(columns={c: f"{c}_{method}" for c in ALL_SUMMARY_METRICS})
         aligned = aligned.merge(sub, on="question_id", how="inner")
@@ -96,7 +102,17 @@ def overall_metrics_table(dfs: dict[str, pd.DataFrame]) -> pd.DataFrame:
 
 
 def paired_diff_table(aligned: pd.DataFrame) -> pd.DataFrame:
-    pairs = [("vector_rag", "toc_rag"), ("vector_rag", "no_rag"), ("toc_rag", "no_rag")]
+    methods = sorted({c[len("f1_") :] for c in aligned.columns if c.startswith("f1_")})
+    pairs: list[tuple[str, str]] = []
+    for i, a in enumerate(methods):
+        for b in methods[i + 1 :]:
+            # keep higher-performing methods first for readability where possible
+            if b == "no_rag":
+                pairs.append((a, b))
+            elif a == "no_rag":
+                pairs.append((b, a))
+            else:
+                pairs.append((a, b))
     rows: list[dict[str, Any]] = []
     for a, b in pairs:
         for metric in MAIN_METRICS:
@@ -166,7 +182,16 @@ def paired_bootstrap(
 
 
 def run_paired_tests(aligned: pd.DataFrame) -> dict[str, Any]:
-    pairs = [("vector_rag", "toc_rag"), ("vector_rag", "no_rag"), ("toc_rag", "no_rag")]
+    methods = sorted({c[len("f1_") :] for c in aligned.columns if c.startswith("f1_")})
+    pairs: list[tuple[str, str]] = []
+    for i, a in enumerate(methods):
+        for b in methods[i + 1 :]:
+            if b == "no_rag":
+                pairs.append((a, b))
+            elif a == "no_rag":
+                pairs.append((b, a))
+            else:
+                pairs.append((a, b))
     metrics = ["f1", "evidence_hit_rate", "citation_hit_rate"]
     results: list[dict[str, Any]] = []
     for a, b in pairs:
