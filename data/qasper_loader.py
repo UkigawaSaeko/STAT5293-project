@@ -179,10 +179,20 @@ def expand_qasper_rows(row: dict[str, Any]) -> Iterator[dict[str, Any]]:
         }
 
 
+def _normalize_qasper_split(split: str) -> str:
+    s = (split or "train").strip().lower()
+    aliases = {"dev": "validation", "val": "validation"}
+    s = aliases.get(s, s)
+    if s not in {"train", "validation", "test"}:
+        raise ValueError(f"Unsupported Qasper split {split!r}; use train, validation, or test.")
+    return s
+
+
 def load_qasper_split(split: str = "train") -> Dataset:
-    # Newer `datasets` versions removed `trust_remote_code`; call without it for compatibility.
-    ds = load_dataset("allenai/qasper", split=split)
-    return ds
+    # datasets>=4 no longer runs Hub dataset scripts (qasper.py). Load Parquet from the hub convert ref.
+    s = _normalize_qasper_split(split)
+    url = f"hf://datasets/allenai/qasper@refs/convert/parquet/qasper/{s}/*.parquet"
+    return load_dataset("parquet", data_files=url, split="train")
 
 
 def make_dev_subset(dataset: Dataset, max_samples: int, seed: int = 42) -> Dataset:
