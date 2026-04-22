@@ -2,7 +2,7 @@
   "method": "hybrid_rag",
   "tag": "hk3_hd3",
   "ablation_slice": {
-    "n_documents": 6,
+    "n_documents": 12,
     "max_questions_per_doc": 2
   },
   "config": {
@@ -14,20 +14,20 @@
     "hybrid_toc_max_depth": 3,
     "hybrid_chunk_max_words": 220
   },
-  "n": 10,
+  "n": 20,
   "mean_em": 0.0,
-  "mean_f1": 0.08391630757638448,
-  "mean_evidence_hit": 0.3277777777777778,
-  "mean_citation_hit": 0.0,
+  "mean_f1": 0.12266898679429501,
+  "mean_evidence_hit": 0.1638888888888889,
+  "mean_citation_hit": 0.7,
   "mean_abstain": 0.0,
-  "mean_citation_precision": 0.0,
-  "avg_n_citations": 0.0,
+  "mean_citation_precision": 0.7,
+  "avg_n_citations": 1.05,
   "llm_hallucination_rate": -1.0,
-  "toc_avg_nav_steps": 1.0,
+  "toc_avg_nav_steps": 1.1,
   "toc_early_stop_rate": 1.0,
-  "avg_latency": 0.0004545624979073182,
-  "total_api_calls": 10.0,
-  "avg_total_tokens": 727.9,
-  "avg_prompt_tokens": 668.9,
-  "avg_completion_tokens": 59.0
+  "avg_latency": 1.3741922562010587,
+  "total_api_calls": 20.0,
+  "avg_total_tokens": 544.7,
+  "avg_prompt_tokens": 499.1,
+  "avg_completion_tokens": 45.6
 }
