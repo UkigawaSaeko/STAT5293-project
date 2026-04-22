@@ -1,20 +1,20 @@
 # Qasper RAG 分析报告（Markdown版）
 
-本文件是对 `experiments/analyze_outputs.py` 产物的文字化分析，作为 ipynb 分析内容的 Markdown 版本。
+本文件是对 `experiments/analyze_outputs.py` 产物的文字化分析，作为 ipynb 分析内容的 Markdown 版本（四方法版本）。
 
 ## 1. 数据与目标
 
-- 数据来源：`outputs/predictions/no_rag_predictions.csv`、`outputs/predictions/toc_rag_predictions.csv`、`outputs/predictions/vector_rag_predictions.csv`
+- 数据来源：`outputs/predictions/no_rag_predictions.csv`、`outputs/predictions/toc_rag_predictions.csv`、`outputs/predictions/hybrid_rag_predictions.csv`、`outputs/predictions/vector_rag_predictions.csv`
 - 对齐方式：按 `question_id` 做配对（paired）比较
 - 任务目标：
-  - 比较三种方法（No-RAG / TOC-RAG / Vector-RAG）的整体表现
+  - 比较四种方法（No-RAG / TOC-RAG / Hybrid-RAG / Vector-RAG）的整体表现
   - 做配对差值分析（同题比较）
   - 做显著性检验（paired bootstrap）
   - 展示效果-成本权衡（cost-quality trade-off）
 
 ## 2. 分析步骤（对应脚本2-6步）
 
-1. 读取三份预测结果并按 `question_id` 对齐  
+1. 读取四份预测结果并按 `question_id` 对齐  
 2. 计算每种方法总体均值指标  
 3. 计算方法两两配对差值（mean-diff/win-rate）  
 4. 对核心质量指标做 paired bootstrap（5000次重采样）  
@@ -29,9 +29,9 @@
 - `fig_cost_vs_quality_f1.png`
 - `fig_cost_vs_citation.png`
 
-## 3. 三种方法区别（No-RAG vs Vector-RAG vs TOC-RAG）
+## 3. 四种方法区别（No-RAG vs TOC-RAG vs Hybrid-RAG vs Vector-RAG）
 
-为便于理解结果，先说明三种方法在“是否检索、如何检索、成本结构”上的核心区别。
+为便于理解结果，先说明四种方法在“是否检索、如何检索、成本结构”上的核心区别。
 
 - **No-RAG**
   - 流程：不做外部检索，模型仅依赖参数记忆直接回答。
@@ -51,11 +51,18 @@
   - 缺点：若导航路径偏离关键章节，可能损失召回，导致质量低于 Vector-RAG。
   - 适用：希望在“质量与成本”间取得折中、且文档结构较规范的场景。
 
+- **Hybrid-RAG**
+  - 流程：先用 TOC 导航缩小到相关章节，再在该章节内做向量检索（scoped vector retrieval）。
+  - 优点：在接近 TOC 的成本下，显著提升 citation 可靠性。
+  - 缺点：整体质量指标仍低于全局 Vector-RAG，且依赖 TOC 导航质量。
+  - 适用：预算受限但仍重视引用/可追溯性的场景。
+
 一句话对比：
 
 - No-RAG：**最低成本基线**
 - Vector-RAG：**最高质量方案**
-- TOC-RAG：**结构化折中方案**
+- TOC-RAG：**结构化低成本方案**
+- Hybrid-RAG：**低成本下更强引用可靠性方案**
 
 ## 4. 指标讲解（How to Read Metrics）
 
@@ -108,10 +115,10 @@
 基于 `overall_metrics.csv`：
 
 - **No-RAG**
-  - F1: `0.0175`
+  - F1: `0.0181`
   - Evidence Hit Rate: `0.0000`
   - Citation Hit Rate: `0.0000`
-  - Heuristic Hallucination: `0.4447`
+  - Heuristic Hallucination: `0.4623`
   - Avg Prompt Tokens: `42.24`
 
 - **TOC-RAG**
@@ -120,6 +127,13 @@
   - Citation Hit Rate: `0.1935`
   - Heuristic Hallucination: `0.2337`
   - Avg Prompt Tokens: `531.03`
+
+- **Hybrid-RAG**
+  - F1: `0.0913`
+  - Evidence Hit Rate: `0.1422`
+  - Citation Hit Rate: `0.5352`
+  - Heuristic Hallucination: `0.2538`
+  - Avg Prompt Tokens: `521.44`
 
 - **Vector-RAG**
   - F1: `0.1233`
@@ -130,19 +144,29 @@
 
 初步解读：
 
-- 两种 RAG 方法均显著优于 No-RAG（质量和 grounding 指标）。
+- 三种 RAG 方法均显著优于 No-RAG（质量和 grounding 指标）。
 - Vector-RAG 在质量指标上最好，但 token 成本最高。
-- TOC-RAG 质量介于两者之间，成本远低于 Vector-RAG，体现出明显“中间解”特征。
+- TOC-RAG 与 Hybrid-RAG 成本都远低于 Vector-RAG。
+- Hybrid-RAG 在接近 TOC 的成本下，citation 命中明显高于 TOC。
 
 ## 6. 配对差值结果（Paired Differences）
 
-基于 `paired_differences.csv`，重点关注 `vector_rag - toc_rag`：
+基于 `paired_differences.csv`，重点关注两组：
+
+1) `vector_rag - toc_rag`
 
 - F1 平均差：`+0.0323`
 - Evidence Hit Rate 平均差：`+0.2716`
 - Citation Hit Rate 平均差：`+0.5729`
 - Heuristic Hallucination 平均差：`-0.2261`（越低越好，说明 Vector 更低）
 - Prompt Tokens 平均差：`+2149.31`
+
+2) `hybrid_rag - toc_rag`
+
+- F1 平均差：`+0.00024`（几乎持平）
+- Evidence Hit Rate 平均差：`-0.00991`（Hybrid 略低）
+- Citation Hit Rate 平均差：`+0.34171`（Hybrid 显著更高）
+- Prompt Tokens 平均差：`-9.59`（Hybrid 略低）
 
 同题胜率（vector 相对 toc）：
 
@@ -151,7 +175,8 @@
 
 解读：
 
-- Vector-RAG 在更多题目上取得更高引用命中与证据支持，但代价是显著更高的 token 消耗。
+- Vector-RAG 在质量与 grounding 上仍最强，但 token 成本最高。
+- Hybrid-RAG 在 TOC 级别成本下，大幅改善 citation 可靠性。
 
 ## 7. 显著性检验（Paired Bootstrap）
 
@@ -162,11 +187,17 @@
   - Evidence Hit: mean diff `0.2716`, 95% CI `[0.2218, 0.3212]`
   - Citation Hit: mean diff `0.5729`, 95% CI `[0.5201, 0.6231]`
 
-- **vector_rag - no_rag** 与 **toc_rag - no_rag** 的核心指标差值 CI 也均不跨 0。
+- **hybrid_rag - toc_rag**
+  - F1: mean diff `0.00024`, 95% CI `[-0.00558, 0.00542]`（不显著）
+  - Evidence Hit: mean diff `-0.00991`, 95% CI `[-0.01880, -0.00269]`（Hybrid 略低且显著）
+  - Citation Hit: mean diff `+0.34171`, 95% CI `[0.29397, 0.39196]`（Hybrid 显著更高）
+
+- **hybrid_rag - no_rag**、**toc_rag - no_rag**、**vector_rag - no_rag** 的核心指标差值 CI 均不跨 0（显著优于 No-RAG）。
 
 统计结论：
 
-- 在当前评测集上，核心质量指标差异具有统计显著性（CI 不跨 0）。
+- Vector-RAG 在核心质量指标上显著领先。
+- Hybrid-RAG 与 TOC-RAG 在 F1 上无显著差异，但 Hybrid-RAG 在 citation 可靠性上显著更好。
 
 ## 8. 成本-效果权衡图
 
@@ -181,18 +212,18 @@
 
 - No-RAG 成本最低但效果最差。
 - Vector-RAG 效果最佳但成本最高。
-- TOC-RAG 在效果与成本之间形成可解释的折中点。
+- TOC-RAG 与 Hybrid-RAG 形成低成本带；其中 Hybrid-RAG 的引用可靠性更高。
 
 ## 9. 对研究问题（RQ）的对应结论
 
 - **RQ1（结构检索是否优于相似度检索）**  
-  在当前数据上，Vector-RAG 的质量指标高于 TOC-RAG；TOC-RAG 并未超过 Vector-RAG，但具备成本优势。
+  在当前数据上，Vector-RAG 的质量指标高于 TOC-RAG 与 Hybrid-RAG；结构/混合方案并未超过 Vector-RAG，但具备显著成本优势。
 
 - **RQ2（对可靠性/幻觉的影响）**  
-  两类 RAG 都优于 No-RAG；其中 Vector-RAG 的 evidence/citation 指标最高，heuristic hallucination 最低。
+  三类 RAG 都优于 No-RAG；其中 Vector-RAG 的 evidence/citation 指标最高，Hybrid-RAG 在低成本区间内提供更高 citation 可靠性。
 
 - **RQ3（效果-成本权衡）**  
-  TOC-RAG 是更低成本的折中方案；Vector-RAG 是更高性能但高成本方案。
+  TOC-RAG 与 Hybrid-RAG 都是低成本方案；Hybrid-RAG 相比 TOC-RAG 进一步提升 citation 可靠性；Vector-RAG 仍是高性能高成本方案。
 
 ## 10. 可复用命令
 
