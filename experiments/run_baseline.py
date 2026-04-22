@@ -1,6 +1,6 @@
 """
-Run no_rag / vector_rag / toc_rag on a small Qasper slice; save predictions + summary metrics.
-Usage from repo root: python experiments/run_baseline.py [--method no_rag|vector_rag|toc_rag]
+Run no_rag / vector_rag / toc_rag / hybrid_rag on a Qasper slice; save predictions + summary metrics.
+Usage from repo root: python experiments/run_baseline.py [--method no_rag|vector_rag|toc_rag|hybrid_rag]
 """
 
 from __future__ import annotations
@@ -24,14 +24,39 @@ from utils.logger import get_logger
 from utils.seed import set_seed
 
 
+def _load_match_qids(path: Path | None) -> set[str] | None:
+    if path is None:
+        return None
+    import csv
+
+    if not path.exists():
+        raise FileNotFoundError(f"match_question_ids_from not found: {path}")
+    with path.open("r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        if "question_id" not in (reader.fieldnames or []):
+            raise ValueError(f"`question_id` column not found in: {path}")
+        return {str(r["question_id"]) for r in reader if r.get("question_id")}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--method", choices=("no_rag", "vector_rag", "toc_rag"), default="no_rag")
+    ap.add_argument("--method", choices=("no_rag", "vector_rag", "toc_rag", "hybrid_rag"), default="no_rag")
     ap.add_argument("--config", type=Path, default=ROOT / "experiments" / "config.yaml")
+    ap.add_argument(
+        "--match-question-ids-from",
+        type=Path,
+        default=None,
+        help="Optional CSV path with `question_id` column. Only these question_ids will be evaluated.",
+    )
     args = ap.parse_args()
 
     cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))
     set_seed(int(cfg.get("seed", 42)))
+    cfg_match = cfg.get("match_question_ids_from")
+    match_path = args.match_question_ids_from or (ROOT / cfg_match if isinstance(cfg_match, str) and cfg_match else None)
+    if isinstance(match_path, Path) and not match_path.is_absolute():
+        match_path = (ROOT / match_path).resolve()
+    match_qids = _load_match_qids(match_path if isinstance(match_path, Path) else None)
 
     log = get_logger("run_baseline", ROOT / cfg.get("log_dir", "outputs/logs") / "baseline.log")
     ds = load_qasper_split(cfg.get("dataset_split", "train"))
@@ -45,11 +70,15 @@ def main() -> None:
     doc_cap = int(cfg.get("max_documents", 20))
     q_cap = int(cfg.get("max_questions_per_doc", 100))
     nd = 0
+    skipped_by_match = 0
     for row in ds:
         if nd >= doc_cap:
             break
         samples = list(expand_qasper_rows(row))[:q_cap]
         for sample in samples:
+            if match_qids is not None and str(sample.get("question_id", "")) not in match_qids:
+                skipped_by_match += 1
+                continue
             out, metrics = pipeline(sample, answer_fn, args.method, cfg, llm)
             outputs.append(out)
             rows.append(
@@ -67,6 +96,14 @@ def main() -> None:
 
     pred_dir = ROOT / cfg.get("output_dir", "outputs/predictions")
     save_predictions_csv(rows, pred_dir / f"{args.method}_predictions.csv")
+    if match_qids is not None:
+        log.info(
+            "Matched question ids from %s: kept=%d skipped=%d target_qids=%d",
+            str(match_path),
+            len(rows),
+            skipped_by_match,
+            len(match_qids),
+        )
 
     avg_em = sum(r.get("em", 0) for r in rows) / max(len(rows), 1)
     avg_f1 = sum(r.get("f1", 0) for r in rows) / max(len(rows), 1)
