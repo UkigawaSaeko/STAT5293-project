@@ -16,6 +16,7 @@ from evaluation.hallucination_eval import llm_hallucination_flag
 from generator.llm_client import build_llm_from_config
 from parser.doc_parser import parse_sample_document
 from retrievers.base import SystemOutput
+from retrievers.hybrid_rag import make_hybrid_rag
 from retrievers.no_rag import NoRAG
 from retrievers.toc_rag import make_toc_rag
 from retrievers.vector_rag import VectorRAG, build_embedder
@@ -44,12 +45,13 @@ def evaluate_output(
     pred_l = (output.answer or "").strip().lower()
     abstain = 1.0 if (not pred_l or "i do not know" in pred_l or "i don't know" in pred_l or "do not know" in pred_l) else 0.0
 
-    # TOC navigation stats (only meaningful for toc_rag; others will be 0).
+    # TOC navigation stats (meaningful for toc_rag/hybrid_rag; others will be 0).
     method = str(output.extra.get("method", ""))
-    toc_steps = float(len(output.navigation_path)) if method == "toc_rag" else 0.0
-    max_depth = int((cfg or {}).get("toc_max_depth", 5)) if method == "toc_rag" else 0
+    toc_like = method in {"toc_rag", "hybrid_rag"}
+    toc_steps = float(len(output.navigation_path)) if toc_like else 0.0
+    max_depth = int((cfg or {}).get("toc_max_depth", 5)) if toc_like else 0
     toc_early_stop = 0.0
-    if method == "toc_rag":
+    if toc_like:
         toc_early_stop = 1.0 if len(output.navigation_path) < max_depth else 0.0
 
     # Hallucination metrics
@@ -123,6 +125,25 @@ def build_answer_fn(method: str, llm, cfg: dict) -> Callable[[dict], SystemOutpu
 
         return _toc
 
+    if method == "hybrid_rag":
+        embedder = build_embedder(cfg)
+        rag = make_hybrid_rag(llm, embedder, cfg)
+
+        def _hybrid(s: dict) -> SystemOutput:
+            doc = parse_sample_document(
+                s,
+                chunk_max_words=int(cfg.get("chunk_max_words", 400)),
+                chunk_overlap_words=int(cfg.get("chunk_overlap_words", 50)),
+            )
+            return rag.answer(
+                s["question"],
+                doc.toc_root,
+                top_k=int(cfg.get("hybrid_top_k", 3)),
+                doc_id=s.get("doc_id", ""),
+            )
+
+        return _hybrid
+
     raise ValueError(f"Unknown method: {method}")
 
 
@@ -177,7 +198,7 @@ def run_experiment(
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Qasper RAG experiment entrypoint")
-    ap.add_argument("--method", choices=("no_rag", "vector_rag", "toc_rag"), default="no_rag")
+    ap.add_argument("--method", choices=("no_rag", "vector_rag", "toc_rag", "hybrid_rag"), default="no_rag")
     ap.add_argument("--config", type=Path, default=Path("experiments/config.yaml"))
     args = ap.parse_args()
 
