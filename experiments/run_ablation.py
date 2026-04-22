@@ -1,10 +1,19 @@
 """
-Grid over a few retrieval hyperparameters; writes one summary JSON per setting.
-Usage from repo root: python experiments/run_ablation.py
+Grid over retrieval hyperparameters; writes one summary JSON per setting.
+
+Uses a *separate* document/question cap from main baselines (see
+`ablation_max_documents` / `ablation_max_questions_per_doc` in experiments/config.yaml)
+so the full grid stays affordable.
+
+Usage from repo root:
+  python experiments/run_ablation.py
+  python experiments/run_ablation.py --llm-backend mock --max-documents 6
+  python experiments/run_ablation.py --config experiments/config.yaml
 """
 
 from __future__ import annotations
 
+import argparse
 import itertools
 import sys
 from copy import deepcopy
@@ -25,28 +34,79 @@ from utils.logger import get_logger
 from utils.seed import set_seed
 
 
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Hyperparameter ablation (small slice; writes JSON per grid point).")
+    p.add_argument(
+        "--config",
+        type=Path,
+        default=ROOT / "experiments" / "config.yaml",
+        help="Base YAML config.",
+    )
+    p.add_argument(
+        "--max-documents",
+        type=int,
+        default=None,
+        help="Override ablation_max_documents (subset size for Qasper docs).",
+    )
+    p.add_argument(
+        "--max-questions-per-doc",
+        type=int,
+        default=None,
+        help="Override ablation_max_questions_per_doc.",
+    )
+    p.add_argument(
+        "--llm-backend",
+        type=str,
+        default=None,
+        choices=("openai", "mock"),
+        help="Override llm_backend for this run only (e.g. mock for a dry run).",
+    )
+    return p.parse_args()
+
+
 def main() -> None:
-    cfg_path = ROOT / "experiments" / "config.yaml"
+    args = _parse_args()
+    cfg_path = args.config.resolve()
     base = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    if args.llm_backend is not None:
+        base["llm_backend"] = args.llm_backend
+
     set_seed(int(base.get("seed", 42)))
-    log = get_logger("ablation", ROOT / base.get("log_dir", "outputs/logs") / "ablation.log")
+    log_dir = ROOT / base.get("log_dir", "outputs/logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log = get_logger("ablation", log_dir / "ablation.log")
+
+    n_docs = args.max_documents
+    if n_docs is None:
+        fallback_docs = min(20, int(base.get("max_documents", 20)))
+        n_docs = int(base.get("ablation_max_documents", fallback_docs))
+    q_cap = args.max_questions_per_doc
+    if q_cap is None:
+        fallback_q = min(2, int(base.get("max_questions_per_doc", 3)))
+        q_cap = int(base.get("ablation_max_questions_per_doc", fallback_q))
 
     ds = load_qasper_split(base.get("dataset_split", "train"))
-    ds = make_dev_subset(ds, max_samples=int(base.get("max_documents", 2)))
+    ds = make_dev_subset(ds, max_samples=n_docs)
     llm = build_llm_from_config(base)
-    q_cap = int(base.get("max_questions_per_doc", 3))
 
-    grid = {
-        "vector_rag": list(
-            itertools.product(
-                [3, 5],
-                [200, 400],
-            )
-        ),
+    grid: dict[str, list] = {
+        "vector_rag": list(itertools.product([3, 5], [200, 400])),
         "toc_rag": list(itertools.product([3, 5], ["bm25", "hash_embed"])),
+        # hybrid_top_k x hybrid_toc_max_depth (small grid)
+        "hybrid_rag": list(itertools.product([2, 3], [3, 4])),
     }
     out_dir = ROOT / base.get("output_dir", "outputs/predictions") / "ablation"
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    config_log_keys = (
+        "vector_top_k",
+        "chunk_max_words",
+        "toc_max_depth",
+        "toc_selection",
+        "hybrid_top_k",
+        "hybrid_toc_max_depth",
+        "hybrid_chunk_max_words",
+    )
 
     for method, combos in grid.items():
         for combo in combos:
@@ -54,11 +114,17 @@ def main() -> None:
             if method == "vector_rag":
                 cfg["vector_top_k"], cfg["chunk_max_words"] = combo
                 tag = f"k{combo[0]}_cw{combo[1]}"
-            else:
+            elif method == "toc_rag":
                 cfg["toc_max_depth"], cfg["toc_selection"] = combo
                 tag = f"d{combo[0]}_{combo[1]}"
+            elif method == "hybrid_rag":
+                cfg["hybrid_top_k"], cfg["hybrid_toc_max_depth"] = combo
+                tag = f"hk{combo[0]}_hd{combo[1]}"
+            else:
+                raise ValueError(method)
+
             answer_fn = build_answer_fn(method, llm, cfg)
-            outputs = []
+            outputs: list = []
             metrics_acc: list[dict] = []
             for row in ds:
                 for sample in list(expand_qasper_rows(row))[:q_cap]:
@@ -73,11 +139,13 @@ def main() -> None:
             summary = {
                 "method": method,
                 "tag": tag,
-                "config": {k: cfg[k] for k in cfg if k in ("vector_top_k", "chunk_max_words", "toc_max_depth", "toc_selection")},
+                "ablation_slice": {"n_documents": n_docs, "max_questions_per_doc": q_cap},
+                "config": {k: cfg[k] for k in config_log_keys if k in cfg},
                 "n": n,
                 "mean_em": sum(m["em"] for m in metrics_acc) / max(n, 1),
                 "mean_f1": sum(m["f1"] for m in metrics_acc) / max(n, 1),
                 "mean_evidence_hit": sum(m["evidence_hit_rate"] for m in metrics_acc) / max(n, 1),
+                "mean_citation_hit": sum(m["citation_hit_rate"] for m in metrics_acc) / max(n, 1),
                 "mean_abstain": sum(m.get("abstain", 0.0) for m in metrics_acc) / max(n, 1),
                 "mean_citation_precision": sum(m.get("citation_precision", 0.0) for m in metrics_acc) / max(n, 1),
                 "avg_n_citations": sum(m.get("n_citations", 0.0) for m in metrics_acc) / max(n, 1),
@@ -86,8 +154,9 @@ def main() -> None:
                 "toc_early_stop_rate": sum(m.get("toc_early_stop", 0.0) for m in metrics_acc) / max(n, 1),
                 **aggregate_efficiency(outputs),
             }
-            save_run_summary(summary, out_dir / f"{method}_{tag}.json")
-            log.info("saved %s", summary)
+            out_path = out_dir / f"{method}_{tag}.json"
+            save_run_summary(summary, out_path)
+            log.info("saved %s n=%s", out_path.name, n)
 
 
 if __name__ == "__main__":
