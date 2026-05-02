@@ -93,12 +93,18 @@ def _build_replay_results(
     no_row: dict[str, str],
     vec_row: dict[str, str],
     toc_row: dict[str, str],
+    hybrid_row: dict[str, str],
     parsed_doc: Any,
 ) -> dict[str, Any]:
     method_rows: dict[str, dict[str, Any]] = {}
     source_title = str(sample.get("title", "")).strip()
-    row_by_method = {"no_rag": no_row, "vector_rag": vec_row, "toc_rag": toc_row}
-    for method in ("no_rag", "vector_rag", "toc_rag"):
+    row_by_method = {
+        "no_rag": no_row,
+        "vector_rag": vec_row,
+        "toc_rag": toc_row,
+        "hybrid_rag": hybrid_row,
+    }
+    for method in ("no_rag", "vector_rag", "toc_rag", "hybrid_rag"):
         row = row_by_method[method]
         source_doc_id = str(row.get("doc_id", "")).strip()
         source_article = (
@@ -161,7 +167,7 @@ def main() -> None:
     st.set_page_config(page_title="Long Doc QA Live Comparator", layout="wide")
     st.title("Interactive Long-Document QA Benchmark")
     st.caption(
-        "Real-time comparison across No RAG, Vector RAG, and TOC-Based RAG on the same document and question."
+        "Replay comparison across No RAG, Vector RAG, TOC-Based RAG, and Hybrid RAG on the same document and question."
     )
 
     cfg_base = _default_config()
@@ -171,8 +177,13 @@ def main() -> None:
         seed = st.number_input("Sampling seed", min_value=1, max_value=9999, value=42)
         vector_top_k = st.slider("Vector top-k", min_value=3, max_value=8, value=5)
         toc_depth = st.slider("TOC max depth", min_value=2, max_value=4, value=3)
+        hybrid_top_k = st.slider("Hybrid top-k", min_value=2, max_value=5, value=3)
         toc_selection = st.selectbox("TOC selection", ["bm25", "hash_embed"], index=0)
         run_btn = st.button("Run live comparison", type="primary")
+        st.caption(
+            "This app replays saved prediction CSVs, so these controls document the intended setup "
+            "but do not recompute answers unless the CSVs are regenerated."
+        )
 
     default_split = str(cfg_base.get("dataset_split", "train"))
     docs = _load_docs(split=default_split, max_docs=max_docs, seed=int(seed))
@@ -208,6 +219,7 @@ def main() -> None:
     preds_no = _load_method_predictions("no_rag")
     preds_vec = _load_method_predictions("vector_rag")
     preds_toc = _load_method_predictions("toc_rag")
+    preds_hybrid = _load_method_predictions("hybrid_rag")
 
     left, right = st.columns([1, 2])
 
@@ -223,16 +235,23 @@ def main() -> None:
 
     if run_btn:
         qid = str(sample.get("question_id", "")).strip()
-        if qid not in preds_no or qid not in preds_vec or qid not in preds_toc:
+        if qid not in preds_no or qid not in preds_vec or qid not in preds_toc or qid not in preds_hybrid:
             with right:
                 st.error(
                     "This question_id is missing from one or more files in outputs/predictions/"
-                    "(no_rag/vector_rag/toc_rag predictions CSV)."
+                    "(no_rag/vector_rag/toc_rag/hybrid_rag predictions CSV)."
                 )
             return
 
         with st.spinner("Loading historical benchmark results..."):
-            results = _build_replay_results(sample, preds_no[qid], preds_vec[qid], preds_toc[qid], parsed_doc)
+            results = _build_replay_results(
+                sample,
+                preds_no[qid],
+                preds_vec[qid],
+                preds_toc[qid],
+                preds_hybrid[qid],
+                parsed_doc,
+            )
 
         with left:
             st.markdown("### TOC Tree")
@@ -248,27 +267,31 @@ def main() -> None:
                 "Replay mode: values come from historical run files "
                 "`outputs/predictions/no_rag_predictions.csv`, "
                 "`outputs/predictions/vector_rag_predictions.csv`, "
-                "`outputs/predictions/toc_rag_predictions.csv`."
+                "`outputs/predictions/toc_rag_predictions.csv`, and "
+                "`outputs/predictions/hybrid_rag_predictions.csv`."
             )
-            st.markdown("### Results: same question, three systems")
-            r1, r2, r3 = st.columns(3)
+            st.markdown("### Results: same question, four systems")
+            r1, r2, r3, r4 = st.columns(4)
             with r1:
                 _method_panel("No RAG", results["methods"]["no_rag"])
             with r2:
                 _method_panel("Vector RAG", results["methods"]["vector_rag"])
             with r3:
                 _method_panel("TOC-Based RAG", results["methods"]["toc_rag"])
+            with r4:
+                _method_panel("Hybrid RAG", results["methods"]["hybrid_rag"])
 
             st.markdown("### Source Article / Efficiency / Quality")
             for key, label in (
                 ("no_rag", "No RAG"),
                 ("vector_rag", "Vector RAG"),
                 ("toc_rag", "TOC-Based RAG"),
+                ("hybrid_rag", "Hybrid RAG"),
             ):
                 payload = results["methods"][key]
                 metrics = payload["metrics"]
                 eff = payload["efficiency"]
-                with st.expander(label, expanded=(key == "toc_rag")):
+                with st.expander(label, expanded=(key == "hybrid_rag")):
                     st.write(f"**Source article:** {payload.get('source_title') or '(unknown title)'}")
                     st.write(f"**Source doc_id:** {payload.get('source_doc_id') or '(unknown)'}")
                     st.write(

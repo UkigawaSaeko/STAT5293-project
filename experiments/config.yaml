@@ -17,7 +17,7 @@ openai_api_key: null
 vector_top_k: 5
 chunk_max_words: 400
 chunk_overlap_words: 50
-embedding_model: null
+embedding_model: sentence-transformers/all-MiniLM-L6-v2
 
 toc_max_depth: 5
 toc_stop_score: null
