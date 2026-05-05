@@ -153,13 +153,14 @@ def _method_panel(title: str, payload: dict[str, Any]) -> None:
         f"`doc_id`: {payload.get('source_doc_id') or '(unknown)'}"
     )
 
-    # Use a 2x2 metric layout so numeric values do not truncate.
-    r1c1, r1c2 = st.columns(2)
-    r2c1, r2c2 = st.columns(2)
-    r1c1.metric("F1", f"{metrics['f1']:.3f}")
-    r1c2.metric("Cit-Prec", f"{metrics['citation_precision']:.3f}")
-    r2c1.metric("EM", f"{metrics['em']:.3f}")
-    r2c2.metric("Tokens", f"{eff['total_tokens']}")
+    # In narrow multi-column layouts, st.metric can truncate values to "...".
+    # Use text rows so users can always read the full numbers.
+    st.markdown(
+        f"**F1:** `{metrics['f1']:.4f}`  \n"
+        f"**Cit-Prec:** `{metrics['citation_precision']:.4f}`  \n"
+        f"**EM:** `{metrics['em']:.4f}`  \n"
+        f"**Tokens:** `{eff['total_tokens']}`"
+    )
     st.caption("F1 = answer correctness, Cit-Prec = citation precision, EM = exact match.")
 
 
