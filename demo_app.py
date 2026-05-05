@@ -158,10 +158,9 @@ def _method_panel(title: str, payload: dict[str, Any]) -> None:
     st.markdown(
         f"**F1:** `{metrics['f1']:.4f}`  \n"
         f"**Cit-Prec:** `{metrics['citation_precision']:.4f}`  \n"
-        f"**EM:** `{metrics['em']:.4f}`  \n"
         f"**Tokens:** `{eff['total_tokens']}`"
     )
-    st.caption("F1 = answer correctness, Cit-Prec = citation precision, EM = exact match.")
+    st.caption("F1 = answer correctness, Cit-Prec = citation precision.")
 
 
 def main() -> None:
