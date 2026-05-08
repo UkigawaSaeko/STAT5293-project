@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import csv
+import sys
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
 import yaml
+
+ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from data.qasper_loader import expand_qasper_rows, load_qasper_split, make_dev_subset
 from parser.doc_parser import parse_sample_document
@@ -13,12 +18,20 @@ from parser.toc_builder import TOCNode
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parent
+    return ROOT
 
 
 def _default_config() -> dict[str, Any]:
     cfg_path = _repo_root() / "experiments" / "config.yaml"
-    return yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    if not cfg_path.exists():
+        raise FileNotFoundError(f"Missing config file: {cfg_path}")
+    try:
+        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Invalid YAML in {cfg_path}: {exc}") from exc
+    if not isinstance(cfg, dict):
+        raise ValueError(f"Config file must contain a YAML mapping: {cfg_path}")
+    return cfg
 
 
 @st.cache_data(show_spinner=False)
@@ -63,6 +76,8 @@ def _prepare_sample(doc: dict[str, Any], question_id: str) -> dict[str, Any]:
     for s in doc["qas"]:
         if s["question_id"] == question_id:
             return s
+    if not doc["qas"]:
+        raise ValueError("Selected document has no QA samples.")
     return doc["qas"][0]
 
 
@@ -72,12 +87,17 @@ def _load_method_predictions(method: str) -> dict[str, dict[str, str]]:
     if not p.exists():
         return {}
     out: dict[str, dict[str, str]] = {}
-    with p.open("r", encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            qid = str(row.get("question_id", "")).strip()
-            if qid:
-                out[qid] = row
+    try:
+        with p.open("r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            if "question_id" not in (reader.fieldnames or []):
+                raise ValueError(f"`question_id` column missing from {p}")
+            for row in reader:
+                qid = str(row.get("question_id", "")).strip()
+                if qid:
+                    out[qid] = row
+    except (OSError, csv.Error, ValueError) as exc:
+        raise RuntimeError(f"Failed to load predictions from {p}: {exc}") from exc
     return out
 
 
@@ -170,7 +190,11 @@ def main() -> None:
         "Replay comparison across No RAG, Vector RAG, TOC-Based RAG, and Hybrid RAG on the same document and question."
     )
 
-    cfg_base = _default_config()
+    try:
+        cfg_base = _default_config()
+    except (FileNotFoundError, ValueError) as exc:
+        st.error(str(exc))
+        return
     with st.sidebar:
         st.header("Demo Controls")
         max_docs = st.slider("Load # documents", min_value=1, max_value=30, value=5)
@@ -186,7 +210,14 @@ def main() -> None:
         )
 
     default_split = str(cfg_base.get("dataset_split", "train"))
-    docs = _load_docs(split=default_split, max_docs=max_docs, seed=int(seed))
+    try:
+        docs = _load_docs(split=default_split, max_docs=max_docs, seed=int(seed))
+    except Exception as exc:
+        st.error(
+            "Failed to load Qasper documents. Check network access, HuggingFace availability, "
+            f"and `dataset_split` in experiments/config.yaml. Details: {exc}"
+        )
+        return
     if not docs:
         st.error("No documents loaded from dataset.")
         return
@@ -201,7 +232,11 @@ def main() -> None:
         "Choose baseline question (you can edit below)",
         [q["question_id"] for q in questions],
     )
-    selected_sample = _prepare_sample(chosen_doc, chosen_qid)
+    try:
+        selected_sample = _prepare_sample(chosen_doc, chosen_qid)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
     user_question = st.text_area(
         "Question input",
         value=selected_sample["question"],
@@ -216,10 +251,14 @@ def main() -> None:
         chunk_max_words=int(cfg_base.get("chunk_max_words", 400)),
         chunk_overlap_words=int(cfg_base.get("chunk_overlap_words", 50)),
     )
-    preds_no = _load_method_predictions("no_rag")
-    preds_vec = _load_method_predictions("vector_rag")
-    preds_toc = _load_method_predictions("toc_rag")
-    preds_hybrid = _load_method_predictions("hybrid_rag")
+    try:
+        preds_no = _load_method_predictions("no_rag")
+        preds_vec = _load_method_predictions("vector_rag")
+        preds_toc = _load_method_predictions("toc_rag")
+        preds_hybrid = _load_method_predictions("hybrid_rag")
+    except RuntimeError as exc:
+        st.error(str(exc))
+        return
 
     left, right = st.columns([1, 2])
 

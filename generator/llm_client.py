@@ -66,6 +66,7 @@ class OpenAICompatibleClient(LLMClient):
         api_key: str | None = None,
         base_url: str | None = None,
         timeout_sec: int = 120,
+        max_retries: int = 2,
     ):
         self.model = model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
         self.api_key = (api_key or "").strip() or os.environ.get("OPENAI_API_KEY", "")
@@ -73,6 +74,7 @@ class OpenAICompatibleClient(LLMClient):
             "/"
         )
         self.timeout_sec = timeout_sec
+        self.max_retries = max(0, int(max_retries))
 
     def generate(self, prompt: str, **kwargs) -> LLMResult:
         if not self.api_key:
@@ -85,10 +87,31 @@ class OpenAICompatibleClient(LLMClient):
             "temperature": kwargs.get("temperature", 0.0),
         }
         t0 = time.perf_counter()
-        resp = requests.post(url, headers=headers, json=body, timeout=self.timeout_sec)
-        resp.raise_for_status()
-        data = resp.json()
-        text = data["choices"][0]["message"]["content"]
+        last_error: Exception | None = None
+        data: dict = {}
+        text = ""
+        for attempt in range(self.max_retries + 1):
+            try:
+                resp = requests.post(url, headers=headers, json=body, timeout=self.timeout_sec)
+                resp.raise_for_status()
+                data = resp.json()
+                text = data["choices"][0]["message"]["content"]
+                break
+            except requests.HTTPError as exc:
+                last_error = exc
+                status = exc.response.status_code if exc.response is not None else "unknown"
+                snippet = exc.response.text[:500] if exc.response is not None else ""
+                if status not in (429, 500, 502, 503, 504) or attempt >= self.max_retries:
+                    raise RuntimeError(
+                        f"OpenAI-compatible API request failed with status {status}: {snippet}"
+                    ) from exc
+            except (requests.RequestException, ValueError, KeyError, IndexError, TypeError) as exc:
+                last_error = exc
+                if attempt >= self.max_retries:
+                    raise RuntimeError(f"OpenAI-compatible API request failed: {exc}") from exc
+            time.sleep(min(2.0, 0.5 * (attempt + 1)))
+        else:
+            raise RuntimeError(f"OpenAI-compatible API request failed: {last_error}")
         usage = data.get("usage") or {}
         lat = time.perf_counter() - t0
         return LLMResult(

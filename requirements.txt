@@ -7,4 +7,7 @@ requests>=2.28.0
 sentence-transformers>=2.2.0
 rank-bm25>=0.2.2
 matplotlib>=3.7.0
+pandas>=2.0.0
 streamlit>=1.35.0
+tqdm>=4.66.0
+pytest>=8.0.0

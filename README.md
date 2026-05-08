@@ -1,31 +1,75 @@
-# STAT5293-project
+# STAT5293 Project
 
-Does Explicit Document Structure Beat Similarity-Based Retrieval?
+**Does Explicit Document Structure Beat Similarity-Based Retrieval for Long-Document QA?**
 
-This project evaluates four long-document QA paradigms on Qasper:
+This repository evaluates four long-document question-answering pipelines on Qasper under one reproducible experiment framework:
 
-- `no_rag`: answer directly from model parametric knowledge
-- `vector_rag`: chunk-based similarity retrieval (Vector RAG)
-- `toc_rag`: structure-aware retrieval using TOC navigation
-- `hybrid_rag`: TOC-guided section selection + scoped vector retrieval
+- `no_rag`: answer directly from the LLM without retrieval.
+- `vector_rag`: chunk the full paper and retrieve top-k chunks by vector similarity.
+- `toc_rag`: use document table-of-contents structure to navigate to a relevant section.
+- `hybrid_rag`: use TOC navigation first, then run scoped vector retrieval inside the selected section.
 
-The goal is to compare answer quality, grounding reliability, and inference cost under a unified pipeline.
+The project compares answer quality, grounding reliability, hallucination proxies, citation behavior, and token cost.
 
-## 1) Project Structure
+## Quick Grading Guide
 
-- `main.py`: unified experiment entrypoint
-- `experiments/run_baseline.py`: run one baseline method and save predictions/summary
-- `experiments/run_ablation.py`: run a small hyperparameter grid for ablations
-- `experiments/analyze_outputs.py`: paired analysis, bootstrap tests, and figures
-- `experiments/config.yaml`: experiment/runtime configuration
-- `retrievers/`: implementations of No-RAG / Vector-RAG / TOC-RAG / Hybrid-RAG
-- `evaluation/`: metrics for answer quality, evidence/citation grounding, hallucination
-- `outputs/predictions/`: raw prediction outputs
-- `outputs/analysis/`: post-hoc analysis tables/figures/reports
+The following files are organized around the course rubric:
 
-## 2) Environment Setup
+| Rubric item | Where to look |
+| --- | --- |
+| Clean and organized code structure | `docs/ARCHITECTURE.md`, `data/`, `parser/`, `retrievers/`, `evaluation/`, `experiments/` |
+| Comprehensive documentation | `README.md`, `docs/REPRODUCIBILITY.md`, `docs/DEPLOYMENT.md`, `outputs/README.md` |
+| Unit tests and error handling | `tests/`, `docs/TESTING.md`, `generator/llm_client.py`, `demo_app.py` |
+| Code/performance optimization | `retrievers/vector_rag.py`, `demo_app.py`, `experiments/config.yaml` |
+| Successful proposed features | `retrievers/`, `outputs/analysis/overall_metrics.csv`, `demo_app.py` |
+| Robust error handling | `generator/llm_client.py`, `demo_app.py` |
+| Integration testing | `tests/test_pipeline_smoke.py`, `.github/workflows/tests.yml` |
+| Reproducible experiments | `experiments/config.yaml`, `experiments/run_baseline.py`, `experiments/analyze_outputs.py`, `docs/REPRODUCIBILITY.md` |
+| Well-documented experimental setup | `README.md`, `docs/RUBRIC_ALIGNMENT.md`, `outputs/README.md` |
 
-Python 3.10+ is recommended.
+For a one-page rubric checklist, see `docs/RUBRIC_ALIGNMENT.md`.
+
+## Project Structure
+
+```text
+STAT5293-project/
+  README.md                         # Setup, experiment, demo, and reproducibility guide
+  requirements.txt                  # Python dependencies
+  .github/workflows/tests.yml        # CI test workflow
+  main.py                           # Shared pipeline functions and optional CLI entrypoint
+  demo_app.py                       # Streamlit replay demo for four QA systems
+  docs/
+    ARCHITECTURE.md                 # System components and data flow
+    DEPLOYMENT.md                   # Streamlit deployment and local demo guide
+    REPRODUCIBILITY.md              # Step-by-step experiment reproduction
+    RUBRIC_ALIGNMENT.md             # Direct mapping to course rubric
+    TESTING.md                      # Unit/integration testing guide
+  experiments/
+    config.yaml                     # Main runtime and experiment configuration
+    run_baseline.py                 # Run one method and save predictions/summary
+    run_ablation.py                 # Run small hyperparameter ablations
+    analyze_outputs.py              # Align predictions, bootstrap tests, plots, tables
+  data/                             # Qasper loading and normalization
+  parser/                           # Paper section parsing, TOC construction, chunking
+  retrievers/                       # No-RAG, Vector-RAG, TOC-RAG, Hybrid-RAG
+  generator/                        # LLM clients and prompt parsing helpers
+  evaluation/                       # EM/F1, evidence, citation, hallucination metrics
+  reports/                          # Output export and plotting helpers
+  utils/                            # Logging and seeding utilities
+  tests/                            # Unit and smoke tests
+  outputs/
+    README.md                       # Generated artifact guide
+    predictions/                    # Generated method prediction CSV/JSON files
+    analysis/                       # Generated post-hoc tables, tests, figures, reports
+```
+
+Run commands from the repository root, the directory that contains `README.md`, `main.py`, and `demo_app.py`.
+
+## Environment Setup
+
+Python 3.10+ is recommended. Python 3.13 was used in the final local run.
+
+macOS/Linux:
 
 ```bash
 python -m venv .venv
@@ -33,41 +77,57 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## 3) API Configuration
+Windows PowerShell:
 
-The default backend is OpenAI (`llm_backend: openai` in `experiments/config.yaml`).
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
 
-Set your key in shell (do not hardcode in yaml):
+Install the same dependencies before running experiments, tests, or the Streamlit demo.
+
+## API Configuration
+
+The default backend is OpenAI-compatible (`llm_backend: openai` in `experiments/config.yaml`). Do not commit API keys.
+
+macOS/Linux:
 
 ```bash
 export OPENAI_API_KEY="your-key"
-# Optional if using a compatible gateway
-export OPENAI_BASE_URL="https://api.openai.com/v1"
+export OPENAI_BASE_URL="https://api.openai.com/v1"  # optional compatible gateway
 ```
 
-If you want a quick non-API sanity check, switch to mock backend in `experiments/config.yaml`:
+Windows PowerShell:
+
+```powershell
+$env:OPENAI_API_KEY="your-key"
+$env:OPENAI_BASE_URL="https://api.openai.com/v1"
+```
+
+For a cheap offline smoke check, switch the config to:
 
 ```yaml
 llm_backend: mock
 ```
 
-## 4) Run Baseline Experiments
+The final dense retrieval configuration uses:
 
-Run each method from project root:
+```yaml
+embedding_model: sentence-transformers/all-MiniLM-L6-v2
+```
+
+## Running Baseline Experiments
+
+`experiments/run_baseline.py` is the recommended reproducible entrypoint. `main.py` contains the shared pipeline used by the experiment scripts and can also be used for direct development.
+
+Run each method from the repository root:
 
 ```bash
 python experiments/run_baseline.py --method no_rag
 python experiments/run_baseline.py --method vector_rag
 python experiments/run_baseline.py --method toc_rag
 python experiments/run_baseline.py --method hybrid_rag
-```
-
-For strict fairness, run with matched question IDs (recommended):
-
-```bash
-python experiments/run_baseline.py --method no_rag --match-question-ids-from outputs/predictions/vector_rag_predictions.csv
-python experiments/run_baseline.py --method toc_rag --match-question-ids-from outputs/predictions/vector_rag_predictions.csv
-python experiments/run_baseline.py --method hybrid_rag --match-question-ids-from outputs/predictions/vector_rag_predictions.csv
 ```
 
 Expected outputs:
@@ -78,9 +138,20 @@ Expected outputs:
 - `outputs/predictions/hybrid_rag_predictions.csv`
 - `outputs/predictions/*_summary.json`
 
-## 5) Run Post-hoc Analysis
+For strict fairness, run one method first and align the remaining methods to its `question_id`s:
 
-After baseline prediction CSVs exist:
+```bash
+python experiments/run_baseline.py --method vector_rag
+python experiments/run_baseline.py --method no_rag --match-question-ids-from outputs/predictions/vector_rag_predictions.csv
+python experiments/run_baseline.py --method toc_rag --match-question-ids-from outputs/predictions/vector_rag_predictions.csv
+python experiments/run_baseline.py --method hybrid_rag --match-question-ids-from outputs/predictions/vector_rag_predictions.csv
+```
+
+The submitted analysis used the configured Qasper `train` split as a controlled experiment slice, not as a claim of test-set generalization.
+
+## Post-Hoc Analysis
+
+After all four baseline prediction CSVs exist:
 
 ```bash
 python experiments/analyze_outputs.py
@@ -94,28 +165,59 @@ Expected outputs in `outputs/analysis/`:
 - `paired_bootstrap_tests.json`
 - `fig_cost_vs_quality_f1.png`
 - `fig_cost_vs_citation.png`
+- `analysis_report.md`
 
-## 6) Run Ablation Study
+Exact match (`EM`) is reported for completeness, but Qasper answers are free-form and model outputs are often paraphrastic full-sentence responses. In our runs, `EM` can be zero across methods even when token-level `F1` is nonzero. We therefore use token-level `F1`, evidence hit rate, citation hit rate, and token cost as the primary comparison signals.
+
+## Ablation Study
 
 ```bash
 python experiments/run_ablation.py
 ```
 
-This writes one summary JSON per setting to:
+The ablation uses a smaller configured slice (`ablation_max_documents`, `ablation_max_questions_per_doc`) and writes summaries to `outputs/predictions/ablation/`. It is intended for trend analysis and is not directly comparable to the main aligned `n=398` baseline table.
 
-- `outputs/predictions/ablation/`
+## Streamlit Demo
 
-## 7) Reproducibility Notes
+The demo is a **historical replay app**: it reads saved prediction CSVs instead of making live API calls. Generate the four baseline CSVs first, then run:
 
-- Fix randomness with `seed` in `experiments/config.yaml`.
-- Keep the same `dataset_split`, `max_documents`, and `max_questions_per_doc` across methods.
-- Do not compare runs with different evaluation budgets.
-- For cost/fairness reporting, include both quality metrics (`f1`, evidence/citation hit) and efficiency metrics (`prompt_tokens`, `completion_tokens`).
+```bash
+streamlit run demo_app.py
+```
 
-## 8) Suggested Reporting Claims (Aligned with Proposal)
+The interface lets users pick a paper and question, inspect the TOC and gold evidence, and compare No-RAG, Vector-RAG, TOC-RAG, and Hybrid-RAG side by side. Sidebar controls document the experiment setup but do not recompute historical answers unless you regenerate the CSV files.
 
-- All retrieval variants outperform No-RAG on long-document grounding.
-- Vector-RAG tends to achieve the strongest quality/grounding metrics.
-- TOC-RAG provides a lower-cost trade-off point with structure-aware retrieval.
-- Hybrid-RAG keeps TOC-level cost while substantially improving citation reliability over TOC-RAG.
-- Paired bootstrap CI supports significance of key metric gaps on current test slice.
+For Streamlit Cloud deployment notes, see `docs/DEPLOYMENT.md`.
+
+## Tests
+
+Run the test suite from the repository root:
+
+```bash
+pytest
+```
+
+The tests cover metric functions, evidence ID parsing, Qasper normalization, and a mock LLM smoke path. They do not require an OpenAI key.
+
+GitHub Actions also runs the test suite through `.github/workflows/tests.yml`. See `docs/TESTING.md` for details.
+
+## Reproducibility Checklist
+
+- Use the repository root as the working directory.
+- Install `requirements.txt` in a fresh virtual environment.
+- Keep `seed`, `dataset_split`, `max_documents`, and `max_questions_per_doc` fixed across methods.
+- Keep `embedding_model`, chunk sizes, `top_k`, TOC depth, and hybrid settings fixed when comparing methods.
+- Use `--match-question-ids-from` for paired fairness across methods.
+- Run `experiments/analyze_outputs.py` after regenerating predictions.
+- Record backend/model changes, because OpenAI-compatible APIs can change over time.
+- Do not commit `.env` files or API keys.
+
+For the full reproduction sequence, see `docs/REPRODUCIBILITY.md`.
+
+## Main Findings
+
+- Retrieval-based methods substantially outperform No-RAG on grounding and answer quality.
+- Vector-RAG achieves the strongest quality and grounding metrics but uses the most prompt tokens.
+- TOC-RAG provides a lower-cost structure-aware baseline.
+- Hybrid-RAG keeps TOC-level efficiency while substantially improving citation reliability over TOC-RAG.
+- Paired bootstrap analysis supports the major metric gaps on the aligned experiment slice.
